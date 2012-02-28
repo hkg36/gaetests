@@ -62,8 +62,10 @@ class Guestbook(webapp.RequestHandler):
         if users.get_current_user():
             greeting.author = users.get_current_user()
         greeting.content = self.request.get("content")
-        avatar = images.resize(self.request.get("img"), 32, 32)
-        greeting.avatar = db.Blob(avatar)
+        image=self.request.get("img");
+        if image:
+            avatar = images.resize(image, 32, 32)
+            greeting.avatar = db.Blob(avatar)
         greeting.put()
         self.redirect('/')
         
