@@ -1,0 +1,10 @@
+application: cxmytest
+version: 2
+runtime: python
+api_version: 1
+
+handlers:
+- url: /twitter/.*
+  script: twitter.py
+- url: /.*
+  script: helloworld.py
