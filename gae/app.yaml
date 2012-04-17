@@ -7,5 +7,8 @@ threadsafe: no
 handlers:
 - url: /twitter/.*
   script: twitter.py
+- url: /fetch/.*
+  script: fetchurl.py
 - url: /.*
   script: helloworld.py
+
