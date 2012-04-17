@@ -36,8 +36,18 @@ class FetchPage (webapp.RequestHandler):
                 buf = StringIO(content)
                 f = gzip.GzipFile(fileobj=buf)
                 content = f.read()
-            encode=get_html_Encode(content)
-            self.response.out.write(content.decode(encode,'ignore'));
+            ct_str=response.info().get('Content-Type')
+            if ct_str!=None:
+                re_res=re.search(';\s*charset\s*=\s*([\w\d-]+)',ct_str,re.IGNORECASE)
+                if re_res!=None:
+                    encode=re_res.group(1)
+                else:
+                    encode=None
+            if encode==None:
+                encode=get_html_Encode(content)
+            if encode!=None:
+                content=content.decode(encode,'ignore');
+            self.response.out.write(content);
         except urllib2.URLError, e:
             self.response.out.write(e)
 
