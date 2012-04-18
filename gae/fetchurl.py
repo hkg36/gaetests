@@ -43,7 +43,17 @@ class MyHTMLParser(HTMLParser):
         else:
             decode_code=self.page_encode;
         self.links.append(data.decode(decode_code,'ignore'))
-                        
+
+def FindNodeTree(root):
+    for one in root.childNodes:
+        if one.type==5:
+            if one.name=='div':
+                if one.attributes.get('class')=='all_city change_city':
+                    return one
+        res=FindNodeTree(one)
+        if res!=None:
+            return res;
+    return None
 class FetchPage (webapp.RequestHandler):
     def get(self):
         url = self.request.get("url")
@@ -82,7 +92,22 @@ class FetchPage (webapp.RequestHandler):
             self.response.out.write('<br />'.join(parser.links));"""
             parser = html5lib.HTMLParser()
             domtree=parser.parse(content,encoding=encode)
-            self.response.out.write(domtree.printTree())
+            
+            """firstlist=[]
+            RunNodeTree(domtree,firstlist)
+            self.response.out.write('<br />'.join(firstlist))"""
+            desdiv=FindNodeTree(domtree)
+            urls=[];
+            for one in desdiv.childNodes:
+                if one.type==5 and one.name=='dl':
+                    for second in one.childNodes:
+                        if second.type==5 and second.name=='dd':
+                            for third in second.childNodes:
+                                if third.type==5 and third.name=='a':
+                                    url=third.attributes.get('href')
+                                    if url!=None:
+                                        urls.append(url)
+            self.response.out.write('<br />'.join(urls))
         except urllib2.URLError, e:
             self.response.out.write(e)
 
