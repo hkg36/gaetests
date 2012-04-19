@@ -6,6 +6,7 @@ import string
 import re
 from StringIO import StringIO
 import gzip
+import zlib
 from google.appengine.ext import db
 from google.appengine.api import users
 from google.appengine.ext import webapp
@@ -54,6 +55,25 @@ def FindNodeTree(root):
         if res!=None:
             return res;
     return None
+
+def ReadHttpBody(response):
+    cl=response.info().getheader('Content-length');
+    if cl==None:
+        cl=0;
+    else:
+        cl=string.atoi(cl);
+    if cl==0:
+        content=response.read();
+    else:
+        content=response.read(cl);
+    if response.info().get('Content-Encoding') == 'gzip':
+        buf = StringIO(content)
+        f = gzip.GzipFile(fileobj=buf)
+        content = f.read()
+    elif response.info().get('Content-Encoding') == 'deflate':
+        content=zlib.decompress(content)
+    return content
+
 class FetchPage (webapp.RequestHandler):
     def get(self):
         url = self.request.get("url")
@@ -61,19 +81,7 @@ class FetchPage (webapp.RequestHandler):
             request = urllib2.Request(url)
             request.add_header('Accept-encoding', 'gzip')
             response = urllib2.urlopen(request)
-            cl=response.info().getheader('Content-length');
-            if cl==None:
-                cl=0;
-            else:
-                cl=string.atoi(cl);
-            if cl==0:
-                content=response.read();
-            else:
-                content=response.read(cl);
-            if response.info().get('Content-Encoding') == 'gzip':
-                buf = StringIO(content)
-                f = gzip.GzipFile(fileobj=buf)
-                content = f.read()
+            content=ReadHttpBody(response)
             
             ct_str=response.info().get('Content-Type')
             if ct_str!=None:
@@ -93,10 +101,11 @@ class FetchPage (webapp.RequestHandler):
             parser = html5lib.HTMLParser()
             domtree=parser.parse(content,encoding=encode)
             
-            """firstlist=[]
-            RunNodeTree(domtree,firstlist)
-            self.response.out.write('<br />'.join(firstlist))"""
-            desdiv=FindNodeTree(domtree)
+            firstlist=[]
+            for one in iter(domtree):
+                firstlist.append(unicode(one))
+            self.response.out.write('<br />'.join(firstlist))
+            """desdiv=FindNodeTree(domtree)
             urls=[];
             for one in desdiv.childNodes:
                 if one.type==5 and one.name=='dl':
@@ -107,7 +116,7 @@ class FetchPage (webapp.RequestHandler):
                                     url=third.attributes.get('href')
                                     if url!=None:
                                         urls.append(url)
-            self.response.out.write('<br />'.join(urls))
+            self.response.out.write('<br />'.join(urls))"""
         except urllib2.URLError, e:
             self.response.out.write(e)
 
