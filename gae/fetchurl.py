@@ -14,64 +14,76 @@ from google.appengine.ext.webapp.util import run_wsgi_app
 from HTMLParser import HTMLParser
 import html5lib
 import itertools
+import json
 
-class MyHTMLParser(HTMLParser):
-    def __init__(self):
-        HTMLParser.__init__(self)
-        self.page_encode=None
-        self.links=[]
- 
-    def handle_starttag(self, tag, attrs):
-        #print "Encountered the beginning of a %s tag" % tag
-        attrdic={}
-        if len(attrs)>0:
-            for (variable, value)  in attrs:
-                attrdic[variable]=value
-        if tag=='meta':
-          if attrdic.get('http-equiv')=='Content-Type':
-              encode_str=attrdic.get('content')
-              if self.page_encode==None and encode_str!=None:
-                  re_res=re.search(';\s*charset\s*=\s*([\w\d-]+)',encode_str,re.IGNORECASE)
-                  if re_res!=None:
-                      self.page_encode=re_res.group(1)
-        elif tag == "a":
-            url=attrdic.get('href')
-            if url!=None:
-                self.links.append(url)
-    def handle_data(self, data):
-        if self.page_encode==None:
-            decode_code='UTF-8'
-        else:
-            decode_code=self.page_encode;
-        self.links.append(data.decode(decode_code,'ignore'))
-
-def FindNodeTree(root):
+def FindSubNode(root, name):
     for one in root.childNodes:
-        if one.type==5:
-            if one.name=='div':
-                if one.attributes.get('class')=='all_city change_city':
-                    return one
-        res=FindNodeTree(one)
-        if res!=None:
-            return res;
+        if one.type == 5:
+            if one.name == name:
+                 return one
     return None
 
+settings = {
+            'digi': 16,
+            'add': 10,
+            'plus': 7,
+            'cha': 36,
+            'center': {
+                'lat': 34.957995,
+                'lng': 107.050781,
+                'isDef': True
+            }
+        }
+def intToStr(Num, radix):
+    _base = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    _res = ''
+    while 1:
+        _d = Num % radix
+        _res += _base[_d]
+        Num = Num / radix
+        if Num == 0:
+            return _res
+def decodeDP_POI(C):
+        I = -1;
+        H = 0;
+        B = "";
+        J = len(C);
+        G = C[J - 1];
+        C = C[0: J - 1];
+        J -= 1
+        for E in range(0, J):
+            D = string.atoi(C[E], settings['cha']) - settings['add'];
+            if D >= settings['add']:
+                D = D - settings['plus']
+            B += intToStr (D, settings['cha'])
+            if D > H:
+                I = E;
+                H = D
+        A = string.atoi(B[0:I], settings['digi']);
+        F = string.atoi(B[I + 1:], settings['digi']);
+        L = float(A + F - string.atoi(G, 36)) / 2;
+        K = float(F - L) / 100000;
+        L = float(L) / 100000;
+        return {
+            'lat': K,
+            'lng': L
+        }
 def ReadHttpBody(response):
-    cl=response.info().getheader('Content-length');
-    if cl==None:
-        cl=0;
+    cl = response.info().getheader('Content-length');
+    if cl == None:
+        cl = 0;
     else:
-        cl=string.atoi(cl);
-    if cl==0:
-        content=response.read();
+        cl = string.atoi(cl);
+    if cl == 0:
+        content = response.read();
     else:
-        content=response.read(cl);
+        content = response.read(cl);
     if response.info().get('Content-Encoding') == 'gzip':
         buf = StringIO(content)
         f = gzip.GzipFile(fileobj=buf)
         content = f.read()
     elif response.info().get('Content-Encoding') == 'deflate':
-        content=zlib.decompress(content)
+        content = zlib.decompress(content)
     return content
 
 class FetchPage (webapp.RequestHandler):
@@ -80,45 +92,58 @@ class FetchPage (webapp.RequestHandler):
         try:
             request = urllib2.Request(url)
             request.add_header('Accept-encoding', 'gzip')
+            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.162 Safari/535.19')
             response = urllib2.urlopen(request)
-            content=ReadHttpBody(response)
-            
-            ct_str=response.info().get('Content-Type')
-            if ct_str!=None:
-                re_res=re.search(';\s*charset\s*=\s*([\w\d-]+)',ct_str,re.IGNORECASE)
-                if re_res!=None:
-                    encode=re_res.group(1)
-                else:
-                    encode=None
-          
-            """
-            parser=MyHTMLParser()
-            if encode!=None:
-                parser.page_encode=encode
-            parser.feed(content)
-            parser.close()
-            self.response.out.write('<br />'.join(parser.links));"""
-            parser = html5lib.HTMLParser()
-            domtree=parser.parse(content,encoding=encode)
-            
-            firstlist=[]
-            for one in iter(domtree):
-                firstlist.append(unicode(one))
-            self.response.out.write('<br />'.join(firstlist))
-            """desdiv=FindNodeTree(domtree)
-            urls=[];
-            for one in desdiv.childNodes:
-                if one.type==5 and one.name=='dl':
-                    for second in one.childNodes:
-                        if second.type==5 and second.name=='dd':
-                            for third in second.childNodes:
-                                if third.type==5 and third.name=='a':
-                                    url=third.attributes.get('href')
-                                    if url!=None:
-                                        urls.append(url)
-            self.response.out.write('<br />'.join(urls))"""
+            content = ReadHttpBody(response)
         except urllib2.URLError, e:
             self.response.out.write(e)
+            return
+            
+        ct_str = response.info().get('Content-Type')
+        if ct_str != None:
+            re_res = re.search(';\s*charset\s*=\s*([\w\d-]+)', ct_str, re.IGNORECASE)
+            if re_res != None:
+                encode = re_res.group(1)
+            else:
+                encode = None
+      
+        parser = html5lib.HTMLParser()
+        domtree = parser.parse(content, encoding=encode)
+        
+        html_root = FindSubNode(domtree, 'html')
+        html_body = FindSubNode(html_root, 'body')
+        for one in html_body.childNodes:
+            if one.type == 5:
+                if one.name == 'script':
+                    for second in one.childNodes:
+                        if second.type == 4:
+                            re_res = re.search('^\s*var\s+page\s*=', second.value, re.IGNORECASE)
+                            if re_res != None:
+                                start = second.value.find('{')
+                                end = second.value.find('}')
+                                #jobject=json.load(StringIO(second.value[start:end+1]))
+                                all_word = second.value[start + 1:end].split(',')
+                                all_list = {}
+                                for pair in all_word:
+                                    kvl = pair.split(':')
+                                    if len(kvl) < 2:
+                                        continue
+                                    all_list[kvl[0].strip()] = kvl[1].strip(' \r\n"')
+                                msg_list_tmp = re.split('<.*?>', all_list['msg'])
+                                msg_list = []
+                                for spltmsg in msg_list_tmp:
+                                    spltmsg2 = spltmsg.strip()
+                                    if len(spltmsg2) > 0:
+                                        msg_list.append(spltmsg2)
+                                oneShop = {
+                                         'pos':decodeDP_POI(all_list['p']),
+                                         'shopId':all_list['shopId']
+                                         }
+                                if len(msg_list) > 0:
+                                    oneShop['shopName'] = msg_list[0]
+                                if len(msg_list) > 1:
+                                    oneShop['address'] = msg_list[1]
+                                self.response.out.write(str(oneShop))
 
 application = webapp.WSGIApplication([
     ('/fetch/fetch', FetchPage),
