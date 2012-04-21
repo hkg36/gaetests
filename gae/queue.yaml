@@ -2,3 +2,9 @@ total_storage_limit: 120M
 queue:
 - name: copydianpin
   rate: 5/s
+  retry_parameters:
+    min_backoff_seconds: 10
+    max_backoff_seconds: 200
+    max_doublings: 0
+    task_retry_limit: 10
+    task_age_limit: 2d
