@@ -1,3 +1,4 @@
+# coding=utf-8
 import cgi
 import datetime
 import logging
@@ -28,6 +29,12 @@ def FindSubNode(root, name):
             if one.name == name:
                  return one
     return None
+def SearchSubNodes(root,name,returnlist):
+    for one in root.childNodes:
+        if one.type == 5:
+            if one.name == name:
+                 returnlist.append(one)
+        SearchSubNodes(one,name,returnlist)
 
 settings = {
             'digi': 16,
@@ -207,9 +214,47 @@ class FetchCategoryPage (webapp.RequestHandler):
             fetchtask.add('copydianpin')
         self.response.out.write(str(shopid_list))
         
+class FetchShopAllPage (webapp.RequestHandler):
+    def get(self):
+        url='http://www.dianping.com/shopall/%s/0'%(self.request.get('a'))
+        try:
+           domtree=getUrlDomTree(url)
+        except Exception, e:
+           self.response.out.write(e)
+           return
+        
+        try:
+            for node in iter(domtree):
+               if node.type==5 and node.name=='a':
+                   if node.attributes.get('name')=='BDBlock':
+                       frelist=node.parent.parent
+                       prenode=node.parent
+                       break
+            for i in range(len(frelist.childNodes)):
+                if frelist.childNodes[i]==prenode:
+                    checknode=frelist.childNodes[i+1]
+                    break
+        except Exception, e:
+           self.response.out.write(e)
+           return
+        link_list=[]
+        for node in checknode.childNodes:
+            if node.type==5 and node.name=="dl":
+                linkNode=SearchSubNodes(node,'a',link_list)
+        categorylist=[]     
+        for linkNode in link_list:
+            hrefstr=linkNode.attributes.get('href')
+            if hrefstr!=None:
+                re_res=re.search('/search/category/(\d+)/0/r(\d+)',hrefstr,re.IGNORECASE)
+                if re_res!=None:
+                    cell={'a':string.atoi(re_res.group(1)),'r':string.atoi(re_res.group(2))}
+                    categorylist.append(cell)
+        self.response.out.write(str(categorylist))
+         
 application = webapp.WSGIApplication([
     ('/fetch/fetchmap', FetchMapPage),
-    ('/fetch/fetchcategory', FetchCategoryPage)
+    ('/fetch/fetchcategory', FetchCategoryPage),
+    ('/fetch/fetchallpage',FetchShopAllPage),
 ], debug=True)
 
 
