@@ -8,13 +8,19 @@ from StringIO import StringIO
 import gzip
 import zlib
 from google.appengine.ext import db
-from google.appengine.api import users
+from google.appengine.api import taskqueue
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 from HTMLParser import HTMLParser
 import html5lib
 import itertools
 import json
+
+class DianPinShopData(db.Model):
+    shopId=db.IntegerProperty()
+    address=db.StringProperty()
+    pos = db.GeoPtProperty()
+    shopName = db.StringProperty()
 
 def FindSubNode(root, name):
     for one in root.childNodes:
@@ -68,6 +74,24 @@ def decodeDP_POI(C):
             'lat': K,
             'lng': L
         }
+def getUrlDomTree(url):
+    request = urllib2.Request(url)
+    request.add_header('Accept-encoding', 'gzip')
+    request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.162 Safari/535.19')
+    response = urllib2.urlopen(request)
+    content = ReadHttpBody(response)
+    
+    ct_str = response.info().get('Content-Type')
+    if ct_str != None:
+        re_res = re.search(';\s*charset\s*=\s*([\w\d-]+)', ct_str, re.IGNORECASE)
+        if re_res != None:
+            encode = re_res.group(1)
+        else:
+            encode = None
+  
+    parser = html5lib.HTMLParser()
+    return parser.parse(content, encoding=encode)
+    
 def ReadHttpBody(response):
     cl = response.info().getheader('Content-length');
     if cl == None:
@@ -86,29 +110,14 @@ def ReadHttpBody(response):
         content = zlib.decompress(content)
     return content
 
-class FetchPage (webapp.RequestHandler):
+class FetchMapPage (webapp.RequestHandler):
     def get(self):
-        url = self.request.get("url")
+        url = 'http://www.dianping.com/shop/%s/map'%(self.request.get('id'))
         try:
-            request = urllib2.Request(url)
-            request.add_header('Accept-encoding', 'gzip')
-            request.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.162 Safari/535.19')
-            response = urllib2.urlopen(request)
-            content = ReadHttpBody(response)
-        except urllib2.URLError, e:
+            domtree=getUrlDomTree(url)
+        except Exception, e:
             self.response.out.write(e)
             return
-            
-        ct_str = response.info().get('Content-Type')
-        if ct_str != None:
-            re_res = re.search(';\s*charset\s*=\s*([\w\d-]+)', ct_str, re.IGNORECASE)
-            if re_res != None:
-                encode = re_res.group(1)
-            else:
-                encode = None
-      
-        parser = html5lib.HTMLParser()
-        domtree = parser.parse(content, encoding=encode)
         
         html_root = FindSubNode(domtree, 'html')
         html_body = FindSubNode(html_root, 'body')
@@ -137,16 +146,70 @@ class FetchPage (webapp.RequestHandler):
                                         msg_list.append(spltmsg2)
                                 oneShop = {
                                          'pos':decodeDP_POI(all_list['p']),
-                                         'shopId':all_list['shopId']
+                                         'shopId':string.atoi(all_list['shopId'])
                                          }
                                 if len(msg_list) > 0:
                                     oneShop['shopName'] = msg_list[0]
                                 if len(msg_list) > 1:
                                     oneShop['address'] = msg_list[1]
+                                    
+                                dianpindata=DianPinShopData.gql('where shopId=:shopId',shopId=oneShop['shopId']).get()
+                                if dianpindata==None:
+                                    dianpindata=DianPinShopData()
+                                    dianpindata.shopId=oneShop['shopId']
+                                dianpindata.pos=db.GeoPt(oneShop['pos']['lat'],oneShop['pos']['lng'])
+                                dianpindata.address=oneShop['address']
+                                dianpindata.shopName=oneShop['shopName']
+                                dianpindata.put()
                                 self.response.out.write(str(oneShop))
 
+class FetchCategoryPage (webapp.RequestHandler):
+    def get(self):
+        url='http://www.dianping.com/search/category/%s/0/r%sp%s'%\
+            (self.request.get('a'),self.request.get('r'),self.request.get('p'))
+        try:
+            domtree=getUrlDomTree(url)
+        except Exception, e:
+            self.response.out.write(e)
+            return
+        
+        searchList=None
+        for node in iter(domtree):
+            if node.type==5 and node.name=='div' :
+                idstr=node.attributes.get('id')
+                if   idstr !=None and idstr.lower()=='searchlist':
+                    searchList=node
+                    break
+        if searchList==None:
+            return
+        searchdl=FindSubNode(searchList,'dl')
+        shopid_list=[]
+        for node in searchdl.childNodes:
+            if node.type==5 and node.name=='dd':
+                pnode=None
+                for subnode in node.childNodes:
+                    if subnode.type==5 and subnode.name=='p':
+                        pnode=subnode
+                        break
+                if pnode!=None:
+                    for anode in iter(pnode):
+                        
+                        if anode.type==5 and anode.name=='a':
+                            hrefmap=anode.attributes.get('href')
+                            if hrefmap!=None:
+                                re_res=re.search('/shop/(\d+?)/map',hrefmap,re.IGNORECASE)
+                                if re_res!=None:
+                                    find_shopNum=re_res.group(1)
+                                    shopid_list.append(string.atoi(find_shopNum))
+                                    break
+        for sid in shopid_list:
+            fetchtask=taskqueue.Task(url='/fetch/fetchmap?id=%d'%sid,method='GET')
+            fetchtask.add('copydianpin')
+        self.response.out.write(str(shopid_list))
+        
 application = webapp.WSGIApplication([
-    ('/fetch/fetch', FetchPage),
+    ('/fetch/fetchmap', FetchMapPage),
+    ('/fetch/fetchcategory', FetchCategoryPage)
 ], debug=True)
 
 
