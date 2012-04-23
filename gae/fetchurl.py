@@ -9,6 +9,7 @@ from StringIO import StringIO
 import gzip
 import zlib
 from google.appengine.ext import db
+from google.appengine.api import memcache
 from google.appengine.api import taskqueue
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
@@ -16,10 +17,11 @@ from HTMLParser import HTMLParser
 import html5lib
 import itertools
 import json
+import datetime
 
 class DianPinShopData(db.Model):
-    shopId=db.IntegerProperty()
-    address=db.StringProperty()
+    shopId = db.IntegerProperty()
+    address = db.StringProperty()
     pos = db.GeoPtProperty()
     shopName = db.StringProperty()
 
@@ -29,12 +31,12 @@ def FindSubNode(root, name):
             if one.name == name:
                  return one
     return None
-def SearchSubNodes(root,name,returnlist):
+def SearchSubNodes(root, name, returnlist):
     for one in root.childNodes:
         if one.type == 5:
             if one.name == name:
                  returnlist.append(one)
-        SearchSubNodes(one,name,returnlist)
+        SearchSubNodes(one, name, returnlist)
 
 settings = {
             'digi': 16,
@@ -116,14 +118,123 @@ def ReadHttpBody(response):
     elif response.info().get('Content-Encoding') == 'deflate':
         content = zlib.decompress(content)
     return content
-
-class FetchMapPage (webapp.RequestHandler):
+        
+class BackTaskList(db.Expando):
+    name=db.StringProperty()
+    
+class FetchShopAllPage (webapp.RequestHandler):
     def get(self):
-        url = 'http://www.dianping.com/shop/%s/map'%(self.request.get('id'))
+        self.response.set_status(501)
+        url = 'http://www.dianping.com/shopall/%s/0' % (self.request.get('a'))
         try:
-            domtree=getUrlDomTree(url)
+           domtree = getUrlDomTree(url)
         except Exception, e:
-            self.response.out.write(e)
+           self.response.out.write(e)
+           return
+        
+        try:
+            for node in iter(domtree):
+               if node.type == 5 and node.name == 'a':
+                   if node.attributes.get('name') == 'BDBlock':
+                       frelist = node.parent.parent
+                       prenode = node.parent
+                       break
+            for i in range(len(frelist.childNodes)):
+                if frelist.childNodes[i] == prenode:
+                    checknode = frelist.childNodes[i + 1]
+                    break
+        except Exception, e:
+           self.response.out.write(e)
+           return
+        link_list = []
+        for node in checknode.childNodes:
+            if node.type == 5 and node.name == "dl":
+                linkNode = SearchSubNodes(node, 'a', link_list)
+             
+        for linkNode in link_list:
+            hrefstr = linkNode.attributes.get('href')
+            if hrefstr != None:
+                re_res = re.search('/search/category/(\d+)/0/r(\d+)', hrefstr, re.IGNORECASE)
+                if re_res != None:
+                    a = string.atoi(re_res.group(1))
+                    r = string.atoi(re_res.group(2))
+                    cat = BackTaskList.gql('where name=:name and a=:a and r=:r and p=:p',name='Category', a=a, r=r,p=1).get()
+                    if cat == None:
+                        cat = BackTaskList()
+                        cat.name='Category'
+                        cat.a = a
+                        cat.r = r
+                        cat.p=1
+                        cat.put()
+        self.response.set_status(200)
+class ProcessTask:
+    def proc_Category(self,taskinfo):
+        self.response.set_status(501)
+        url = 'http://www.dianping.com/search/category/%d/0/r%dp%d' % \
+            (taskinfo.a,taskinfo.r, taskinfo.p)
+        try:
+            domtree = getUrlDomTree(url)
+        except Exception, e:
+            self.LogWrite(e)
+            return
+        
+        searchList = None
+        for node in iter(domtree):
+            if node.type == 5 and node.name == 'div' :
+                idstr = node.attributes.get('id')
+                if   idstr != None and idstr.lower() == 'searchlist':
+                    searchList = node
+                    break
+        if searchList == None:
+            return
+        searchdl = FindSubNode(searchList, 'dl')
+        shopid_list = []
+        for node in searchdl.childNodes:
+            if node.type == 5 and node.name == 'dd':
+                pnode = None
+                for subnode in node.childNodes:
+                    if subnode.type == 5 and subnode.name == 'p':
+                        pnode = subnode
+                        break
+                if pnode != None:
+                    for anode in iter(pnode):
+                        
+                        if anode.type == 5 and anode.name == 'a':
+                            hrefmap = anode.attributes.get('href')
+                            if hrefmap != None:
+                                re_res = re.search('/shop/(\d+?)/map', hrefmap, re.IGNORECASE)
+                                if re_res != None:
+                                    find_shopNum = re_res.group(1)
+                                    shopid_list.append(string.atoi(find_shopNum))
+                                    break
+        for sid in shopid_list:
+            dianpindata = DianPinShopData.gql('where shopId=:shopId', shopId=sid).get()
+            if dianpindata == None:
+                cat = BackTaskList.gql('where name=:name and shopId=:shopId',name='MapPage', shopId=sid).get()
+                if cat==None:
+                    cat=BackTaskList()
+                    cat.name='MapPage'
+                    cat.shopId=sid
+                    cat.put()
+                    
+        self.LogWrite(str(shopid_list))
+        
+        if taskinfo.p < 50:
+            next_page=taskinfo.p
+            cat = BackTaskList.gql('where name=:name and a=:a and r=:r and p=:p',name='Category', a=taskinfo.a, r=taskinfo.r,p=next_page).get()
+            if cat == None:
+                cat = BackTaskList()
+                cat.name='Category'
+                cat.a = taskinfo.a
+                cat.r = taskinfo.r
+                cat.p=next_page
+                cat.put()
+    def proc_MapPage(self,taskinfo):
+        url = 'http://www.dianping.com/shop/%d/map' % taskinfo.shopId
+        try:
+            domtree = getUrlDomTree(url)
+        except Exception, e:
+            self.LogWrite(e)
             return
         
         html_root = FindSubNode(domtree, 'html')
@@ -160,101 +271,43 @@ class FetchMapPage (webapp.RequestHandler):
                                 if len(msg_list) > 1:
                                     oneShop['address'] = msg_list[1]
                                     
-                                dianpindata=DianPinShopData.gql('where shopId=:shopId',shopId=oneShop['shopId']).get()
-                                if dianpindata==None:
-                                    dianpindata=DianPinShopData()
-                                    dianpindata.shopId=oneShop['shopId']
-                                dianpindata.pos=db.GeoPt(oneShop['pos']['lat'],oneShop['pos']['lng'])
-                                dianpindata.address=oneShop['address']
-                                dianpindata.shopName=oneShop['shopName']
+                                dianpindata = DianPinShopData.gql('where shopId=:shopId', shopId=oneShop['shopId']).get()
+                                if dianpindata == None:
+                                    dianpindata = DianPinShopData()
+                                    dianpindata.shopId = oneShop['shopId']
+                                dianpindata.pos = db.GeoPt(oneShop['pos']['lat'], oneShop['pos']['lng'])
+                                dianpindata.address = oneShop['address']
+                                dianpindata.shopName = oneShop['shopName']
                                 dianpindata.put()
-                                self.response.out.write(str(oneShop))
-
-class FetchCategoryPage (webapp.RequestHandler):
+                                self.LogWrite(str(oneShop))
+                                
+class ProcessWorkPage (webapp.RequestHandler,ProcessTask):
+    def LogWrite(self,str):
+        self.response.out.write(str)
     def get(self):
-        url='http://www.dianping.com/search/category/%s/0/r%sp%s'%\
-            (self.request.get('a'),self.request.get('r'),self.request.get('p'))
-        try:
-            domtree=getUrlDomTree(url)
-        except Exception, e:
-            self.response.out.write(e)
+        memclient=memcache.Client()
+        if memclient.incr('onlyoneProcessWork',initial_value=0)>1:
+            memclient.decr('onlyoneProcessWork')
             return
-        
-        searchList=None
-        for node in iter(domtree):
-            if node.type==5 and node.name=='div' :
-                idstr=node.attributes.get('id')
-                if   idstr !=None and idstr.lower()=='searchlist':
-                    searchList=node
-                    break
-        if searchList==None:
-            return
-        searchdl=FindSubNode(searchList,'dl')
-        shopid_list=[]
-        for node in searchdl.childNodes:
-            if node.type==5 and node.name=='dd':
-                pnode=None
-                for subnode in node.childNodes:
-                    if subnode.type==5 and subnode.name=='p':
-                        pnode=subnode
-                        break
-                if pnode!=None:
-                    for anode in iter(pnode):
-                        
-                        if anode.type==5 and anode.name=='a':
-                            hrefmap=anode.attributes.get('href')
-                            if hrefmap!=None:
-                                re_res=re.search('/shop/(\d+?)/map',hrefmap,re.IGNORECASE)
-                                if re_res!=None:
-                                    find_shopNum=re_res.group(1)
-                                    shopid_list.append(string.atoi(find_shopNum))
-                                    break
-        for sid in shopid_list:
-            fetchtask=taskqueue.Task(url='/fetch/fetchmap?id=%d'%sid,method='GET')
-            fetchtask.add('copydianpin')
-        self.response.out.write(str(shopid_list))
-        
-class FetchShopAllPage (webapp.RequestHandler):
-    def get(self):
-        url='http://www.dianping.com/shopall/%s/0'%(self.request.get('a'))
+        checktask=None
         try:
-           domtree=getUrlDomTree(url)
-        except Exception, e:
-           self.response.out.write(e)
-           return
-        
-        try:
-            for node in iter(domtree):
-               if node.type==5 and node.name=='a':
-                   if node.attributes.get('name')=='BDBlock':
-                       frelist=node.parent.parent
-                       prenode=node.parent
-                       break
-            for i in range(len(frelist.childNodes)):
-                if frelist.childNodes[i]==prenode:
-                    checknode=frelist.childNodes[i+1]
-                    break
-        except Exception, e:
-           self.response.out.write(e)
-           return
-        link_list=[]
-        for node in checknode.childNodes:
-            if node.type==5 and node.name=="dl":
-                linkNode=SearchSubNodes(node,'a',link_list)
-        categorylist=[]     
-        for linkNode in link_list:
-            hrefstr=linkNode.attributes.get('href')
-            if hrefstr!=None:
-                re_res=re.search('/search/category/(\d+)/0/r(\d+)',hrefstr,re.IGNORECASE)
-                if re_res!=None:
-                    cell={'a':string.atoi(re_res.group(1)),'r':string.atoi(re_res.group(2))}
-                    categorylist.append(cell)
-        self.response.out.write(str(categorylist))
-         
+            cat = BackTaskList.all().get()
+            if cat!=None:
+                function_call=getattr(self,'proc_%s'%cat.name)
+                if function_call!=None:
+                    function_call(cat)
+                cat.delete()
+                
+                checktask = taskqueue.Task(method='GET', url='/fetch/procwork')
+        except: 
+            checktask = taskqueue.Task(method='GET', url='/fetch/procwork', eta=datetime.datetime.now() + datetime.timedelta(seconds=10))
+        if checktask!=None:
+            checktask.add('copydianpin')
+        memclient.decr_async('onlyoneProcessWork')
+    
 application = webapp.WSGIApplication([
-    ('/fetch/fetchmap', FetchMapPage),
-    ('/fetch/fetchcategory', FetchCategoryPage),
-    ('/fetch/fetchallpage',FetchShopAllPage),
+    ('/fetch/fetchallpage', FetchShopAllPage),
+    ('/fetch/procwork', ProcessWorkPage),
 ], debug=True)
 
 

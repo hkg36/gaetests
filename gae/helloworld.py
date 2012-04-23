@@ -22,6 +22,7 @@ class Greeting(db.Model):
 
 class MainPage(webapp.RequestHandler):
     def get(self):
+        memcache.incr('Hello',initial_value=0)
         self.response.out.write('<html><body>')
         query_str = "SELECT * FROM Greeting ORDER BY date DESC LIMIT 10"
         greetings = Greeting.gql ('ORDER BY date DESC LIMIT 10')
