@@ -94,8 +94,7 @@ class PostPage(webapp.RequestHandler,PageTools):
         word=self.request.get('word')
         client=self.getSinaClient()
         res=client.post.statuses__update(status=word)
-
-        self.response.out.write(res)
+        self.render('weiboPostRes.htm',{'user':res['user'],'text':res['text']})
 class UnfollowAll(webapp.RequestHandler,PageTools):
     def get(self):
         client=self.getSinaClient()
