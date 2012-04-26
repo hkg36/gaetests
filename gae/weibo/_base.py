@@ -263,7 +263,7 @@ def _parse_params(params_str, unicode_value=True):
         unicode_value: return unicode value if True, otherwise str value. default true.
     Returns:
         JsonObject (inherited from dict)
-    
+
     >>> s = _parse_params('a=123&b=X%26Y&c=%E4%B8%AD%E6%96%87')
     >>> s.a
     u'123'
@@ -307,7 +307,7 @@ def _encode_params(**kw):
 def _quote(s):
     '''
     quote everything including /
-    
+
     >>> _quote(123)
     '123'
     >>> _quote(u'\u4e2d\u6587')
@@ -332,7 +332,7 @@ def _generate_signature(key, base_string):
 def _generate_base_string(method, url, **params):
     '''
     generate base string for signature
-    
+
     >>> method = 'GET'
     >>> url = 'http://www.sina.com.cn/news'
     >>> params = dict(a=1, b='A&B')
@@ -346,3 +346,5 @@ def _generate_base_string(method, url, **params):
 if __name__=='__main__':
     import doctest
     doctest.testmod()
+
+#发图片例子 client.upload.statuses__upload(status=u'测试OAuth 2.0带图片发微博', pic=open('/Users/michael/test.png'))

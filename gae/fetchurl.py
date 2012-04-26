@@ -169,7 +169,6 @@ class FetchShopAllPage (webapp.RequestHandler):
         self.response.set_status(200)
 class ProcessTask:
     def proc_Category(self,taskinfo):
-        self.response.set_status(501)
         url = 'http://www.dianping.com/search/category/%d/0/r%dp%d' % \
             (taskinfo.a,taskinfo.r, taskinfo.p)
         try:

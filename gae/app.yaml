@@ -13,4 +13,3 @@ handlers:
   script: fetchurl.py
 - url: /.*
   script: helloworld.py
-
