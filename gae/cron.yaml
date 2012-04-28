@@ -1,0 +1,4 @@
+cron:
+- description: trans twitter to weibo
+  url: /conn/trans
+  schedule: every 8 minutes

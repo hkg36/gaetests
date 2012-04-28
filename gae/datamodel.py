@@ -12,3 +12,8 @@ class TwitterOauth(db.Model):
     screen_name=db.StringProperty()
     access_key = db.StringProperty()
     access_secret = db.StringProperty()
+
+class AccountConnect(db.Model):
+    max_msg=db.IntegerProperty()
+    SinaOauth=db.ReferenceProperty(SinaWeiboOauth)
+    TwitterOauth=db.ReferenceProperty(TwitterOauth)

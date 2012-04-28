@@ -53,7 +53,7 @@ class TwitterAuthorizationPage(webapp.RequestHandler):
             self.api=tweepy.API(oauth_auth)
             meinfo=self.api.me()
 
-            todata=TwitterOauth.gql('where screen_name=:name',name=meinfo.screen_name).get()
+            todata=TwitterOauth.gql('where user_id=:id',id=meinfo.id).get()
             if  todata is None:
                 todata=TwitterOauth()
                 todata.user_id=meinfo.id
