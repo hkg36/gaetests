@@ -3,12 +3,14 @@ version: 2
 runtime: python27
 api_version: 1
 threadsafe: no
-  
+
 handlers:
-- url: /twitter/.*
+- url: /tr/.*
   script: twitter.py
 - url: /weibo/.*
   script: testweibo.py
+- url: /conn/.*
+  script: TwitterDumpToWeibo.py
 - url: /fetch/.*
   script: fetchurl.py
 - url: /.*

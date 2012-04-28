@@ -9,16 +9,11 @@ from google.appengine.ext.webapp import template
 import json
 import os
 from gaesessions import get_current_session
+from datamodel import *
 
 _DEBUG=True
 APP_KEY = '685427335'
 APP_SECRET = '1d735fa8f18fa94d87cd9196867edfb6'
-
-class SinaWeiboOauth(db.Model):
-    user_id=db.IntegerProperty(required=True)
-    screen_name=db.StringProperty()
-    access_key = db.StringProperty()
-    access_secret = db.StringProperty()
 
 class RootPage(webapp.RequestHandler):
     def get(self):
