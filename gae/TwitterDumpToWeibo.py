@@ -16,6 +16,7 @@ import json
 import os
 from gaesessions import get_current_session
 from datamodel import *
+from global_data import *
 
 _DEBUG=True
 
@@ -55,15 +56,11 @@ class ConnectUser(webapp.RequestHandler,PageTools):
         pass
 class TransMessage(webapp.RequestHandler,PageTools):
     def getTwitterClient(self,twitter_oauth):
-        consumer_key = 'g3H8iTwBmFKK2pPphAHg'
-        consumer_secret = 'AbSm2dIUwKV1lVT6sz6VfDgqKdPC6BbmM784gVRGw'
-        oauth_auth= tweepy.OAuthHandler(consumer_key, consumer_secret)
+        oauth_auth= tweepy.OAuthHandler(g_appkey['twitter']['key'], g_appkey['twitter']['secret'])
         oauth_auth.set_access_token(twitter_oauth.access_key,twitter_oauth.access_secret)
         return tweepy.API(oauth_auth)
     def getSinaClient(self,sina_oauth):
-        APP_KEY = '685427335'
-        APP_SECRET = '1d735fa8f18fa94d87cd9196867edfb6'
-        token=weibo.OAuthToken(sina_oauth.access_key,sina_oauth.access_secret)
+        token=weibo.OAuthToken(g_appkey['weibo']['key'], g_appkey['weibo']['secret'])
         client=weibo.APIClient(app_key=APP_KEY,app_secret=APP_SECRET,token=token)
         return client
     def get(self):
@@ -75,23 +72,19 @@ class TransMessage(webapp.RequestHandler,PageTools):
                 sina_client=self.getSinaClient(sina_oauth)
                 twitter_client=self.getTwitterClient(twitter_oauth)
 
-                if ac.max_msg is None:
+                if str(ac.max_msg) == 0:
                     time_line=twitter_client.home_timeline()
                 else:
                     time_line=twitter_client.home_timeline(since_id=ac.max_msg)
 
-                max_msg_id=0
                 for msg in time_line:
-
                     try:
                         sina_client.post.statuses__update(status=msg.text)
-                        if msg.id>max_msg_id:
-                            max_msg_id=msg.id
                     except Exception,e:
-                        self.response.out.write('wei bo fail:%s<br />'%e)
+                        logging.error('wei bo fail:%s %s',str(e),msg.text)
 
-                if max_msg_id>0 and max_msg_id>ac.max_msg:
-                    ac.max_msg=max_msg_id
+                if len(time_line):
+                    ac.max_msg=time_line[0].id_str
                     ac.put()
         except Exception,e:
             self.response.out.write(e)

@@ -17,18 +17,21 @@ APP_SECRET = '1d735fa8f18fa94d87cd9196867edfb6'
 
 class RootPage(webapp.RequestHandler):
     def get(self):
-        session=get_current_session()
-        if session!=None:
-            if session.has_key('weibo_access_key') and session.has_key('weibo_access_secret'):
-                self.redirect('./timeline')
-                return
-        CALLBACK_URL=self.request.url+'authorization'
-        client = weibo.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, callback=CALLBACK_URL)
-        request_token = client.get_request_token()
-        session['oauth_token']=request_token.oauth_token
-        session['oauth_secret']=request_token.oauth_token_secret
-        url = client.get_authorize_url(request_token)
-        self.redirect(url)
+        try:
+            session=get_current_session()
+            """if session!=None:
+                if session.has_key('weibo_access_key') and session.has_key('weibo_access_secret'):
+                    self.redirect('./timeline')
+                    return"""
+            CALLBACK_URL=self.request.url+'authorization'
+            client = weibo.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, callback=CALLBACK_URL)
+            request_token = client.get_request_token()
+            session['oauth_token']=request_token.oauth_token
+            session['oauth_secret']=request_token.oauth_token_secret
+            url = client.get_authorize_url(request_token)
+            self.redirect(url)
+        except Exception,e:
+            self.response.out.write(e)
 
 class AuthorizationPage(webapp.RequestHandler):
     def get(self):
@@ -72,17 +75,20 @@ class PageTools:
 
 class ReadUserTimeLine(webapp.RequestHandler,PageTools):
     def get(self):
-        client=self.getSinaClient()
+        try:
+            client=self.getSinaClient()
 
-        timeline=client.statuses__home_timeline()
-        tl_list=[]
-        for node in timeline:
-            user=node['user']
-            one={'text':node.get('text'),
-            'user':user.get('screen_name'),
-            }
-            tl_list.append(one)
-        self.render('weiboInfo.htm',{'timeline':tl_list})
+            timeline=client.statuses__home_timeline()
+            tl_list=[]
+            for node in timeline:
+                user=node['user']
+                one={'text':node.get('text'),
+                'user':user.get('screen_name'),
+                }
+                tl_list.append(one)
+            self.render('weiboInfo.htm',{'timeline':tl_list})
+        except Exception,e:
+            self.response.out.write(e)
 
 class PostPage(webapp.RequestHandler,PageTools):
     def get(self):
