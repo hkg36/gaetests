@@ -4,7 +4,7 @@ import cgi
 import datetime
 import logging
 import tweepy
-import weibo
+import weibo_api
 from google.appengine.ext import db
 from google.appengine.api import users
 from google.appengine.ext import webapp
@@ -60,8 +60,8 @@ class TransMessage(webapp.RequestHandler,PageTools):
         oauth_auth.set_access_token(twitter_oauth.access_key,twitter_oauth.access_secret)
         return tweepy.API(oauth_auth)
     def getSinaClient(self,sina_oauth):
-        token=weibo.OAuthToken(g_appkey['weibo']['key'], g_appkey['weibo']['secret'])
-        client=weibo.APIClient(app_key=APP_KEY,app_secret=APP_SECRET,token=token)
+        client=weibo_api.APIClient(app_key=g_appkey['weibo']['key'],app_secret=g_appkey['weibo']['secret'])
+        client.set_access_token(sina_oauth.access_token, sina_oauth.expires_in)
         return client
     def get(self):
         try:

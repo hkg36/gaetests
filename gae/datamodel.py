@@ -4,8 +4,8 @@ from google.appengine.ext import db
 class SinaWeiboOauth(db.Model):
     user_id=db.IntegerProperty(required=True)
     screen_name=db.StringProperty()
-    access_key = db.StringProperty()
-    access_secret = db.StringProperty()
+    access_token = db.StringProperty()
+    expires_in=db.IntegerProperty()
 
 class TwitterOauth(db.Model):
     user_id=db.IntegerProperty()

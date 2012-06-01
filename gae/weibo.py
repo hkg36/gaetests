@@ -1,4 +1,4 @@
-import weibo
+import weibo_api
 from google.appengine.ext import db
 from google.appengine.api import users
 from google.appengine.ext import webapp
@@ -8,12 +8,14 @@ from google.appengine.api import memcache
 from google.appengine.ext.webapp import template
 import json
 import os
+import string
 from gaesessions import get_current_session
 from datamodel import *
 
 _DEBUG=True
 APP_KEY = '685427335'
 APP_SECRET = '1d735fa8f18fa94d87cd9196867edfb6'
+CALLBACK_URL='http://www.hkg36.tk/weibo/authorization'
 
 class RootPage(webapp.RequestHandler):
     def get(self):
@@ -23,12 +25,9 @@ class RootPage(webapp.RequestHandler):
                 if session.has_key('weibo_access_key') and session.has_key('weibo_access_secret'):
                     self.redirect('./timeline')
                     return"""
-            CALLBACK_URL=self.request.url+'authorization'
-            client = weibo.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, callback=CALLBACK_URL)
-            request_token = client.get_request_token()
-            session['oauth_token']=request_token.oauth_token
-            session['oauth_secret']=request_token.oauth_token_secret
-            url = client.get_authorize_url(request_token)
+            session['callbackurl']=CALLBACK_URL
+            client = weibo_api.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, redirect_uri=CALLBACK_URL)
+            url = client.get_authorize_url()
             self.redirect(url)
         except Exception,e:
             self.response.out.write(e)
@@ -36,37 +35,31 @@ class RootPage(webapp.RequestHandler):
 class AuthorizationPage(webapp.RequestHandler):
     def get(self):
         session=get_current_session()
-        oauth_token = self.request.get('oauth_token')
-        oauth_verifier = self.request.get('oauth_verifier')
-        oauth_token_secret=session['oauth_secret']
-        del session['oauth_token']
-        del session['oauth_secret']
+        code=self.request.get('code')
+        client = weibo_api.APIClient(app_key=APP_KEY, app_secret=APP_SECRET,redirect_uri=CALLBACK_URL)
+        r = client.request_access_token(code)
+        client.set_access_token(r.access_token, r.expires_in)
+        uid=string.atoi(r.uid)
 
-        request_token = weibo.OAuthToken(oauth_token, oauth_token_secret, oauth_verifier)
-        client = weibo.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, token=request_token)
-
-        access_token = client.get_access_token()
-        client = weibo.APIClient(app_key=APP_KEY, app_secret=APP_SECRET, token= access_token)
-        account = client.account__verify_credentials()
-
-        save_oauth=SinaWeiboOauth.gql('where user_id=:user_id',user_id=account.id).get()
+        u_info=client.users__show(uid=uid)
+        save_oauth=SinaWeiboOauth.gql('where user_id=:user_id',user_id=uid).get()
         if save_oauth==None:
-            save_oauth=SinaWeiboOauth(user_id=account.id)
-        save_oauth.screen_name=account.screen_name
-        save_oauth.access_key=access_token.oauth_token
-        save_oauth.access_secret=access_token.oauth_token_secret
+            save_oauth=SinaWeiboOauth(user_id=uid)
+        save_oauth.screen_name=u_info.screen_name
+        save_oauth.access_token=r.access_token
+        save_oauth.expires_in=r.expires_in
         save_oauth.put()
 
-        session['weibo_access_key']=access_token.oauth_token
-        session['weibo_access_secret']=access_token.oauth_token_secret
+        session['access_token']=r.access_token
+        session['expires_in']=r.expires_in
 
-        self.response.out.write(str(account))
+        self.response.out.write(str(u_info))
 
 class PageTools:
     def getSinaClient(self):
         session=get_current_session()
-        token=weibo.OAuthToken(session['weibo_access_key'],session['weibo_access_secret'])
-        client=weibo.APIClient(app_key=APP_KEY,app_secret=APP_SECRET,token=token)
+        client=weibo_api.APIClient(app_key=APP_KEY, app_secret=APP_SECRET,redirect_uri=CALLBACK_URL)
+        client.set_access_token(session['access_token'],session['expires_in'])
         return client
     def render(self, template_name, template_values={}):
         directory = os.path.dirname(__file__)
@@ -75,20 +68,19 @@ class PageTools:
 
 class ReadUserTimeLine(webapp.RequestHandler,PageTools):
     def get(self):
-        try:
-            client=self.getSinaClient()
+        client=self.getSinaClient()
 
-            timeline=client.statuses__home_timeline()
-            tl_list=[]
-            for node in timeline:
-                user=node['user']
-                one={'text':node.get('text'),
-                'user':user.get('screen_name'),
-                }
-                tl_list.append(one)
-            self.render('weiboInfo.htm',{'timeline':tl_list})
-        except Exception,e:
-            self.response.out.write(e)
+        timeline=client.statuses__home_timeline()
+        statuses=timeline['statuses']
+        tl_list=[]
+        for node in statuses:
+            user=node.get('user')
+            one={'text':node.get('text'),
+            'imghead':user.get('profile_image_url'),
+            'user':user.get('screen_name'),
+            }
+            tl_list.append(one)
+        self.render('weiboInfo.htm',{'timeline':tl_list})
 
 class PostPage(webapp.RequestHandler,PageTools):
     def get(self):

@@ -8,7 +8,7 @@ handlers:
 - url: /tr/.*
   script: twitter.py
 - url: /weibo/.*
-  script: testweibo.py
+  script: weibo.py
 - url: /conn/.*
   script: TwitterDumpToWeibo.py
 - url: /fetch/.*
