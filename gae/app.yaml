@@ -1,5 +1,5 @@
 application: cxmytest
-version: 2
+version: 1
 runtime: python27
 api_version: 1
 threadsafe: no
@@ -13,5 +13,5 @@ handlers:
   script: TwitterDumpToWeibo.py
 - url: /fetch/.*
   script: fetchurl.py
-- url: /.*
-  script: helloworld.py
+- url: /main/.*
+  script: main.py

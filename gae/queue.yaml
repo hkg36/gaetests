@@ -1,5 +1,11 @@
 total_storage_limit: 120M
 queue:
+- name: backendqueue
+  mode: pull
+  acl:
+    - user_email: zju3020912063@gmail.com
+    - writer_email: zju3020912063@gmail.com
+
 - name: copydianpin
   rate: 5/s
   retry_parameters:

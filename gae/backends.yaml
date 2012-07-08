@@ -1,0 +1,6 @@
+backends:
+- name: fetchbackend
+  class: B1
+  instances: 1
+  start: backend.py
+  options: dynamic,failfast
